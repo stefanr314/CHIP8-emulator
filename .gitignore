@@ -1,0 +1,26 @@
+# build directories
+build/
+bin/
+
+# object files
+*.o
+*.obj
+*.elf
+
+# dependency tracking
+*.d
+
+# shared files
+*.so 
+*.dll 
+*.so.*
+
+# libraries
+*.a
+*.lib
+*.lo
+
+# executables
+*.exe
+*.out
+*.app

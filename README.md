@@ -1,0 +1,3 @@
+# CHIP8 Emulator In C
+
+An emulator for CHIP8 written in C...
