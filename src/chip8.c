@@ -39,11 +39,12 @@
 #error No operating system specified
 #endif /* if defined (_WIN32)*/
 
-int loadRomFile(char *restrict filename, uint8_t *restrict memory);
+int load_rom_file(char *restrict filename, uint8_t *restrict memory);
 
-static inline int isRegularFile(mode_t mode) { return S_ISREG(mode); }
+static inline int is_regular_file(mode_t mode) { return S_ISREG(mode); }
 
-static inline int validChip8File(off_t fileSize) {
+/* fprintf statements should be moved from inline functions*/
+static inline int is_valid_chip8_file(off_t fileSize) {
   if (fileSize > MAX_ROM_SIZE) {
     fprintf(stderr, "Size of loaded file expands the ROM capacity of original "
                     "CHIP8 program.\n");
@@ -63,7 +64,7 @@ static inline int validChip8File(off_t fileSize) {
   return 1;
 }
 
-void printHexDump(void *memory, int bytes);
+void print_hex_dump(void *memory, int bytes);
 
 int main(int argc, char *argv[]) {
   uint8_t memory[MEM_CAP]; // to be refactored
@@ -82,7 +83,7 @@ int main(int argc, char *argv[]) {
   }
 
   char *filename = argv[1];
-  int notLoaded = loadRomFile(filename, &memory[0x200]);
+  int notLoaded = load_rom_file(filename, &memory[0x200]);
   if (notLoaded) {
     return EXIT_FAILURE;
   }
@@ -92,10 +93,11 @@ int main(int argc, char *argv[]) {
   return EXIT_SUCCESS;
 }
 
-int loadRomFile(char *restrict filename, uint8_t *restrict memory) {
+int load_rom_file(char *restrict filename, uint8_t *restrict memory) {
   int returnValue = EXIT_SUCCESS;
   STAT_STRUCT stat;
   FILE *fp = fopen(filename, "rb");
+
   if (!fp) {
     (void)fprintf(stderr, "File could not be opened. Check the location of file"
                           " and try again.\n");
@@ -109,13 +111,13 @@ int loadRomFile(char *restrict filename, uint8_t *restrict memory) {
     goto FILE_ERROR;
   }
 
-  if (!isRegularFile(stat.st_mode)) {
+  if (!is_regular_file(stat.st_mode)) {
     (void)fprintf(stderr, "The opened file is not the regular file.\n");
     returnValue = -1;
     goto FILE_ERROR;
   }
 
-  if (!validChip8File(stat.st_size)) {
+  if (!is_valid_chip8_file(stat.st_size)) {
     returnValue = -1;
     goto FILE_ERROR;
   }
@@ -123,33 +125,32 @@ int loadRomFile(char *restrict filename, uint8_t *restrict memory) {
   printf("U have opened game file with name: %s.\n", filename);
 
   (void)rewind(fp);
-  int bytesRead = fread((void *)memory, (size_t)stat.st_size, (size_t)1, fp);
+  size_t bytesRead = fread((void *)memory, (size_t)stat.st_size, (size_t)1, fp);
 
-  // if (bytesRead < (int)stat.st_size) {
-  //   if (feof(fp)) {
-  //     fprintf(stderr, "EOF reached before reading the hole ROM file.\n");
-  //   } else if (ferror(fp)) {
-  //     fprintf(stderr, "Error upon reding the ROM file.\n");
-  //   }
-  //
-  //   returnValue = -1;
-  //   goto FILE_ERROR;
-  // }
+  if (bytesRead < (size_t)1) {
+    if (feof(fp)) {
+      fprintf(stderr, "EOF reached before reading the hole ROM file.\n");
+    } else if (ferror(fp)) {
+      fprintf(stderr, "Error upon reding the ROM file.\n");
+    }
 
-  printHexDump((void *)memory, (int)stat.st_size);
+    returnValue = -1;
+    goto FILE_ERROR;
+  }
+
+  print_hex_dump((void *)memory, (int)stat.st_size);
 
 FILE_ERROR:
   fclose(fp);
   return returnValue;
 }
 
-void printHexDump(void *memory, int bytes) {
-  uint8_t *mem = (uint8_t *)memory;
+void print_hex_dump(void *memory, int bytes) {
+  unsigned char *mem = (unsigned char *)memory;
   for (int i = 0; i < bytes; i += 2) {
-    printf("%x%x ", mem[i], mem[i + 1]);
-
     if (i != 0 && i % 16 == 0) {
       printf("\n");
     }
+    printf("%.2x%.2x ", mem[i], mem[i + 1]);
   }
 }
