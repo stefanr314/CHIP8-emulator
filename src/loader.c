@@ -1,4 +1,5 @@
 #include "../include/loader.h"
+#include <stddef.h>
 #include <stdlib.h>
 
 typedef enum {
@@ -12,26 +13,25 @@ typedef enum {
 static inline int is_regular_file(mode_t mode) { return S_ISREG(mode); }
 
 static inline int chip8_file_validation(off_t fileSize) {
-  RomValidationStatus status = SUCCESS;
-
   if (fileSize > MAX_ROM_SIZE) {
-    status = FILE_TOO_LARGE;
+    return FILE_TOO_LARGE;
   }
 
   if (fileSize < 2) {
-    status = FILE_TOO_SMALL;
+    return FILE_TOO_SMALL;
   }
 
   if (fileSize % 2 != 0) {
-    status = FILE_CORRUPTED;
+    return FILE_CORRUPTED;
   }
 
-  return status;
+  return SUCCESS;
 }
 
 static void print_hex_dump(void *memory, int bytes);
 
-int load_rom_file(char *restrict path, uint8_t *restrict memory) {
+int load_rom_file(const char *restrict path, uint8_t *restrict memory,
+                  size_t *restrict read_size) {
   int return_value = EXIT_SUCCESS;
   STAT_STRUCT stat;
   FILE *fp = fopen(path, "rb");
@@ -39,12 +39,11 @@ int load_rom_file(char *restrict path, uint8_t *restrict memory) {
   if (!fp) {
     (void)fprintf(stderr, "File could not be opened. Check the location of file"
                           " and try again.\n");
-    return EXIT_FAILURE;
+    return -1;
   }
 
   int fd = FILENO(fp);
   if (FSTAT(fd, &stat) != 0) {
-    // error occured
     return_value = -1;
     goto FILE_ERROR;
   }
@@ -84,9 +83,9 @@ int load_rom_file(char *restrict path, uint8_t *restrict memory) {
 
   (void)rewind(fp);
   size_t bytes_read =
-      fread((void *)memory, (size_t)stat.st_size, (size_t)1, fp);
+      fread((void *)memory, (size_t)1, (size_t)stat.st_size, fp);
 
-  if (bytes_read < (size_t)1) {
+  if (bytes_read < (size_t)stat.st_size) {
     if (feof(fp)) {
       fprintf(stderr, "EOF reached before reading the hole ROM file.\n");
     } else if (ferror(fp)) {
@@ -98,6 +97,10 @@ int load_rom_file(char *restrict path, uint8_t *restrict memory) {
   }
 
   print_hex_dump((void *)memory, (int)stat.st_size);
+
+  if (read_size) {
+    *read_size = bytes_read;
+  }
 
 FILE_ERROR:
   fclose(fp);
