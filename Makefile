@@ -1,7 +1,10 @@
-build/bin/chip8 : build/obj/chip8.o build/obj/loader.o
-	gcc -Wall -Wextra -pedantic -std=c11 -o build/bin/chip8 build/obj/chip8.o build/obj/loader.o
+build/bin/chip8_emu : build/obj/platform.o build/obj/chip8.o build/obj/loader.o
+	gcc -Wall -Wextra -pedantic -std=c11 -o build/bin/chip8_emu build/obj/platform.o build/obj/chip8.o build/obj/loader.o
 
-build/obj/chip8.o : src/chip8.c include/loader.h
+build/obj/platform.o: src/platform.c include/loader.h include/chip8.h
+	gcc -Wall -Wextra -pedantic -std=c11 -c src/platform.c -o build/obj/platform.o
+
+build/obj/chip8.o : src/chip8.c include/chip8.h
 	gcc -Wall -Wextra -pedantic -std=c11 -c src/chip8.c -o build/obj/chip8.o
 
 build/obj/loader.o : src/loader.c include/loader.h
