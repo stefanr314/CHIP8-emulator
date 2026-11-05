@@ -1,6 +1,7 @@
 #include "../include/chip8.h"
 #include "../include/loader.h"
 #include <stdlib.h>
+#include <time.h>
 
 int main(int argc, char *argv[]) {
   if (argc < 2) {
@@ -35,5 +36,43 @@ int main(int argc, char *argv[]) {
 
   printf("\nLets play some games, shall we...\n");
 
-  /* TODO: set the timers and the loop. */
+  double dt_cpu = 1.0 / chip8_config.simulation_hz;
+  double dt_timer = 1.0 / chip8_config.timer_hz;
+
+  double accu_cpu = 0.0;
+  double accu_timer = 0.0;
+
+  const double MAX_FRAME_TIME =
+      10.0 * dt_cpu; /* Allow for maximum of 10 steps simulation advancement*/
+
+  clock_t prev = clock();
+  for (;;) {
+    // record time, bound frame rate
+    clock_t current = clock();
+    double frame_time = ((double)current - prev) / CLOCKS_PER_SEC;
+    if (frame_time > MAX_FRAME_TIME) {
+      frame_time = MAX_FRAME_TIME;
+    }
+    prev = current;
+
+    // update accu times
+    accu_cpu += frame_time;
+    accu_timer += frame_time;
+
+    // update physical simulation logic
+    while (accu_cpu >= dt_cpu) {
+      chip8_cycle(&chip8);
+      accu_cpu -= dt_cpu;
+    }
+
+    while (accu_timer >= dt_timer) {
+      /* TODO: decrement dt i st timers */
+      accu_timer -= dt_timer;
+    }
+
+    // update screen
+    /* TODO: implement render logic */
+
+    // use some interrupted wait instead of busy wait
+  }
 }
