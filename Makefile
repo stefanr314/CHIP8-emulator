@@ -1,15 +1,48 @@
-build/bin/chip8_emu : build/obj/platform.o build/obj/chip8.o build/obj/loader.o
-	gcc -Wall -Wextra -pedantic -std=c11 -o build/bin/chip8_emu build/obj/platform.o build/obj/chip8.o build/obj/loader.o
+CC = gcc
+DEBUG ?= 0
 
-build/obj/platform.o: src/platform.c include/loader.h include/chip8.h
-	gcc -Wall -Wextra -pedantic -std=c11 -c src/platform.c -o build/obj/platform.o
+ifeq ($(DEBUG), 1)
+	#debug mode
+	MODE := debug
+	CFLAGS := -g3 -O0 -DDEBUG
+else
+	MODE := release
+	CFLAGS := -O2 -DNDEBUG
+endif
 
-build/obj/chip8.o : src/chip8.c include/chip8.h
-	gcc -Wall -Wextra -pedantic -std=c11 -c src/chip8.c -o build/obj/chip8.o
+BUILDDIR := build/$(MODE)
+OBJDIR := $(BUILDDIR)/obj
+BINDIR := $(BUILDDIR)/bin
 
-build/obj/loader.o : src/loader.c include/loader.h
-	gcc -Wall -Wextra -pedantic -std=c11 -c src/loader.c -o build/obj/loader.o
+SRCDIR := src
 
-build/debug/chip8 : src/chip8.c
-	gcc -Wall -pedantic -std=c11 -g3 -O0 -DDEBUG src/chip8.c -o build/debug/chip8
-	chmod +x build/debug/chip8
+TARGET := $(BINDIR)/chip8_emu
+
+override CFLAGS += -Wall -Wextra -std=c11 -pedantic
+override CPPFLAGS += -MMD -MP
+LDLIBS := $(shell pkgconf --libs sdl2)
+LDFLAGS :=
+
+SRCS := $(wildcard $(SRCDIR)/*.c)
+OBJS := $(SRCS:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
+DEPS := $(OBJS:.o=.d)
+
+.PHONY: all clean
+
+all: $(TARGET)
+
+# let's write rules for linking phase
+$(TARGET): $(OBJS) | $(BINDIR)
+	$(CC) $(LDFLAGS) $^ -o $@ $(LDLIBS)
+
+# let's write implicit rule for compiling
+$(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+$(OBJDIR) $(BINDIR):
+	mkdir -p $@ 
+
+clean:
+	rm -rf build 
+
+-include $(DEPS)

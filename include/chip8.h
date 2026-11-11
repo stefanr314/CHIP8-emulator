@@ -1,3 +1,6 @@
+/*
+ * API for working with chip8 related functionalities.
+ * */
 #ifndef CHIP8_H
 #define CHIP8_H 1
 
