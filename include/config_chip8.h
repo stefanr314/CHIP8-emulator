@@ -1,4 +1,10 @@
-/*API for configuring chip8 specs, depending on the machine to be emulated. */
+/*
+ *
+ * API for configuring chip8 specs, depending on the machine to be emulated.
+ * This API should not be included separetly. Use chip8.h instead.
+ *
+ * */
+
 #ifndef CONFIG_CHIP8_H
 #define CONFIG_CHIP8_H 1
 

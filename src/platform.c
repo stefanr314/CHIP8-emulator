@@ -1,5 +1,7 @@
 #include "../include/chip8.h"
 #include "../include/loader.h"
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_stdinc.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -18,6 +20,7 @@ int main(int argc, char *argv[]) {
   }
 
   char *filename = argv[1];
+  // SDL_Init(SDL_VIDEO_DRIVER_DUMMY);
 
   Chip8 chip8;
   // load the config for chip8
@@ -46,6 +49,8 @@ int main(int argc, char *argv[]) {
       10.0 * dt_cpu; /* Allow for maximum of 10 steps simulation advancement*/
 
   clock_t prev = clock();
+
+  /* game loop */
   for (;;) {
     // record time, bound frame rate
     clock_t current = clock();
