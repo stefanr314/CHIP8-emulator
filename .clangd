@@ -1,0 +1,11 @@
+CompileFlags:
+  BuiltinHeaders: Clangd
+  Add: 
+    - -xc
+    - -Wall 
+    - -Wextra
+    - -std=c11
+    - -pedantic
+    - -I/usr/include/SDL2
+    - -D_REENTRANT
+  

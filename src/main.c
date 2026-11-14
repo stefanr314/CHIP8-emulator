@@ -1,7 +1,9 @@
 #include "../include/chip8.h"
 #include "../include/loader.h"
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_stdinc.h>
+#include "../include/platform.h"
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -20,7 +22,6 @@ int main(int argc, char *argv[]) {
   }
 
   char *filename = argv[1];
-  // SDL_Init(SDL_VIDEO_DRIVER_DUMMY);
 
   Chip8 chip8;
   // load the config for chip8
@@ -39,6 +40,11 @@ int main(int argc, char *argv[]) {
 
   printf("\nLets play some games, shall we...\n");
 
+  /* Start up the platform */
+  Platform *platform =
+      platform_create("CHIP8 - Emulator", chip8_config.screen_width,
+                      chip8_config.screen_height, 15);
+
   double dt_cpu = 1.0 / chip8_config.simulation_hz;
   double dt_timer = 1.0 / chip8_config.timer_hz;
 
@@ -49,10 +55,13 @@ int main(int argc, char *argv[]) {
       10.0 * dt_cpu; /* Allow for maximum of 10 steps simulation advancement*/
 
   clock_t prev = clock();
+  bool quit = 0;
 
   /* game loop */
-  for (;;) {
-    // record time, bound frame rate
+  while (!quit) {
+    // TODO: check events
+
+    // FIXME: record time, bound frame rate; use wall clock instead.
     clock_t current = clock();
     double frame_time = ((double)current - prev) / CLOCKS_PER_SEC;
     if (frame_time > MAX_FRAME_TIME) {
@@ -75,9 +84,24 @@ int main(int argc, char *argv[]) {
       accu_timer -= dt_timer;
     }
 
-    // update screen
-    /* TODO: implement render logic */
+    /* TODO: render only when draw flag raised*/
+    if (0) {
 
-    // use some interrupted wait instead of busy wait
+      int not_rendered = platform_render_frame(platform, chip8.screen,
+                                               chip8_config.screen_width,
+                                               chip8_config.screen_height);
+      if (not_rendered) {
+        fprintf(stderr, "Renderer suffered critical error terminating...");
+        goto exit_routine;
+      }
+    }
+
+    // FIXME: use some interrupted wait instead of busy wait with respect to
+    // guest display fps; otherwise screen tearing may occur (not on modern
+    // systems tbh)
+    // if elapsed < min_screen_frame sleep
   }
+
+exit_routine:
+  platform_destroy(platform);
 }
