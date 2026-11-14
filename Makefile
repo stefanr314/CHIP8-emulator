@@ -20,8 +20,13 @@ TARGET := $(BINDIR)/chip8_emu
 
 override CFLAGS += -Wall -Wextra -std=c11 -pedantic
 override CPPFLAGS += -MMD -MP
-LDLIBS := $(shell pkgconf --libs sdl2)
+SDL_CFLAGS := $(shell pkgconf --cflags sdl2)
+SDL_LIBS := $(shell pkgconf --libs sdl2)
+
+LDLIBS := $(SDL_LIBS)
 LDFLAGS :=
+
+ALL_CFLAGS := $(CFLAGS) $(SDL_CFLAGS)
 
 SRCS := $(wildcard $(SRCDIR)/*.c)
 OBJS := $(SRCS:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
@@ -37,7 +42,7 @@ $(TARGET): $(OBJS) | $(BINDIR)
 
 # let's write implicit rule for compiling
 $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(ALL_CFLAGS) -c $< -o $@
 
 $(OBJDIR) $(BINDIR):
 	mkdir -p $@ 
