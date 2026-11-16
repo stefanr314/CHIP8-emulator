@@ -4,6 +4,7 @@
 #include <SDL_hints.h>
 #include <SDL_pixels.h>
 #include <SDL_render.h>
+#include <SDL_timer.h>
 #include <SDL_video.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -14,6 +15,7 @@ struct Platform {
   SDL_Window *window;
   SDL_Renderer *renderer;
   SDL_Texture *screen_texture;
+  uint64_t clock_frequency;
 };
 
 Platform *platform_create(const char *window_title, uint32_t base_width,
@@ -69,6 +71,8 @@ Platform *platform_create(const char *window_title, uint32_t base_width,
     goto error_routine;
   }
 
+  platform->clock_frequency = SDL_GetPerformanceFrequency();
+
   return platform;
 error_routine:
   platform_destroy(platform);
@@ -117,6 +121,14 @@ int platform_render_frame(Platform *platform, const uint8_t *framebuffer,
 
   return status;
 }
+
+uint64_t platform_get_ticks(void) { return SDL_GetPerformanceCounter(); }
+
+uint64_t platform_get_clock_frequency(Platform *platform) {
+  return platform->clock_frequency;
+}
+
+void platform_sleep_ms(uint32_t ms) { SDL_Delay(ms); }
 
 void platform_destroy(Platform *platform) {
   if (!platform)
