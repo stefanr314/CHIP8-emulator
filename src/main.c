@@ -47,23 +47,28 @@ int main(int argc, char *argv[]) {
 
   double dt_cpu = 1.0 / chip8_config.simulation_hz;
   double dt_timer = 1.0 / chip8_config.timer_hz;
-
   double accu_cpu = 0.0;
   double accu_timer = 0.0;
 
+  const double MIN_FRAME_TIME =
+      1.0 /
+      chip8_config
+          .display_refresh_rate; /* since VSYNC does not effect emulated guest
+                                    screen bound this frame time too*/
   const double MAX_FRAME_TIME =
-      10.0 * dt_cpu; /* Allow for maximum of 10 steps simulation advancement*/
+      5.0 * MIN_FRAME_TIME; /* Cap frame time to prevent spiral of death. */
 
-  clock_t prev = clock();
+  uint64_t prev = platform_get_ticks();
+  uint64_t clock_frequency = platform_get_clock_frequency(platform);
+
   bool quit = 0;
-
+  bool draw_flag = 1; /* NOTE: dummy flag until instruction implemented*/
   /* game loop */
   while (!quit) {
     // TODO: check events
 
-    // FIXME: record time, bound frame rate; use wall clock instead.
-    clock_t current = clock();
-    double frame_time = ((double)current - prev) / CLOCKS_PER_SEC;
+    uint64_t current = platform_get_ticks();
+    double frame_time = (double)(current - prev) / clock_frequency;
     if (frame_time > MAX_FRAME_TIME) {
       frame_time = MAX_FRAME_TIME;
     }
@@ -85,7 +90,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* TODO: render only when draw flag raised*/
-    if (0) {
+    if (draw_flag) {
 
       int not_rendered = platform_render_frame(platform, chip8.screen,
                                                chip8_config.screen_width,
@@ -94,12 +99,17 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Renderer suffered critical error terminating...");
         goto exit_routine;
       }
+      draw_flag = 0;
     }
 
-    // FIXME: use some interrupted wait instead of busy wait with respect to
-    // guest display fps; otherwise screen tearing may occur (not on modern
-    // systems tbh)
-    // if elapsed < min_screen_frame sleep
+    /* Sleep the rest of time frame. */
+    uint64_t elapsed_ticks = platform_get_ticks() - current;
+    double elapsed_sec = (double)elapsed_ticks / clock_frequency;
+    if (elapsed_sec < MIN_FRAME_TIME) {
+      double gap_ms = (MIN_FRAME_TIME - elapsed_sec) * 1000.0;
+      platform_sleep_ms(
+          (uint32_t)gap_ms); /* gap drift measured by accumulators*/
+    }
   }
 
 exit_routine:

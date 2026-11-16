@@ -21,7 +21,18 @@ extern Platform *platform_create(const char *window_title, uint32_t base_width,
  * behave as no-op when platform not created.*/
 extern void platform_destroy(Platform *platform);
 
-extern int platform_render_frame(Platform *platform,
-                                  const uint8_t *framebuffer, uint32_t base_w,
-                                  uint32_t base_h);
+/*
+ * Function for render frame from framebuffer with base width and height set.
+ *
+ * Returns status of success: 0 if frame got (eventually) rendered to screen; 1
+ * otherwise.
+ * */
+extern int platform_render_frame(Platform *platform, const uint8_t *framebuffer,
+                                 uint32_t base_w, uint32_t base_h);
+
+extern uint64_t platform_get_ticks(void);
+
+extern uint64_t platform_get_clock_frequency(Platform *platform);
+
+extern void platform_sleep_ms(uint32_t ms);
 #endif // !PLATFORM_H
