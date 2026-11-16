@@ -61,11 +61,27 @@ int main(int argc, char *argv[]) {
   uint64_t prev = platform_get_ticks();
   uint64_t clock_frequency = platform_get_clock_frequency(platform);
 
-  bool quit = 0;
+  bool quit = false;
   bool draw_flag = 1; /* NOTE: dummy flag until instruction implemented*/
+
+  PlatformEvent event = {.event_type = 0,
+                         .key_index.index = 0}; /* make memory checkers happy */
   /* game loop */
   while (!quit) {
-    // TODO: check events
+
+    /* check events */
+    while (platform_poll_event(&event)) {
+      if (event.event_type == EMULATOR_QUIT_EVENT) {
+        quit = true;
+      } else if (event.event_type == KEY_PRESSED_EVENT) {
+        switch (event.key_index.index) {
+
+        case 0x0a:
+          printf("U have pressed a key A.\n");
+          break;
+        }
+      }
+    }
 
     uint64_t current = platform_get_ticks();
     double frame_time = (double)(current - prev) / clock_frequency;

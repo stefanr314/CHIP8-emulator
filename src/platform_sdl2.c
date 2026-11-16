@@ -1,9 +1,11 @@
 #include "../include/platform.h"
 #include <SDL.h>
 #include <SDL_error.h>
+#include <SDL_events.h>
 #include <SDL_hints.h>
 #include <SDL_pixels.h>
 #include <SDL_render.h>
+#include <SDL_scancode.h>
 #include <SDL_timer.h>
 #include <SDL_video.h>
 #include <stdint.h>
@@ -16,7 +18,46 @@ struct Platform {
   SDL_Renderer *renderer;
   SDL_Texture *screen_texture;
   uint64_t clock_frequency;
+  SDL_Event event;
 };
+
+static inline int scancode_to_hex_keyboard_index(SDL_Scancode scancode) {
+  if (scancode == SDL_SCANCODE_1) {
+    return 0x01;
+  } else if (scancode == SDL_SCANCODE_2) {
+    return 0x02;
+  } else if (scancode == SDL_SCANCODE_3) {
+    return 0x03;
+  } else if (scancode == SDL_SCANCODE_4) {
+    return 0x0c;
+  } else if (scancode == SDL_SCANCODE_Q) {
+    return 0x04;
+  } else if (scancode == SDL_SCANCODE_W) {
+    return 0x05;
+  } else if (scancode == SDL_SCANCODE_E) {
+    return 0x06;
+  } else if (scancode == SDL_SCANCODE_R) {
+    return 0x0d;
+  } else if (scancode == SDL_SCANCODE_A) {
+    return 0x07;
+  } else if (scancode == SDL_SCANCODE_S) {
+    return 0x08;
+  } else if (scancode == SDL_SCANCODE_D) {
+    return 0x09;
+  } else if (scancode == SDL_SCANCODE_F) {
+    return 0x0e;
+  } else if (scancode == SDL_SCANCODE_Z) {
+    return 0x0a;
+  } else if (scancode == SDL_SCANCODE_X) {
+    return 0x00;
+  } else if (scancode == SDL_SCANCODE_C) {
+    return 0x0b;
+  } else if (scancode == SDL_SCANCODE_V) {
+    return 0x0f;
+  }
+
+  return -1;
+}
 
 Platform *platform_create(const char *window_title, uint32_t base_width,
                           uint32_t base_height, uint32_t scale) {
@@ -129,6 +170,42 @@ uint64_t platform_get_clock_frequency(Platform *platform) {
 }
 
 void platform_sleep_ms(uint32_t ms) { SDL_Delay(ms); }
+
+int platform_poll_event(struct PlatfromEvent *event) {
+  if (!SDL_PollEvent(NULL))
+    return 0;
+
+  SDL_Event sdl_event;
+  SDL_Scancode scancode;
+  int inx = -1;
+  while (SDL_PollEvent(&sdl_event)) {
+    switch (sdl_event.type) {
+    case SDL_QUIT:
+      event->event_type = EMULATOR_QUIT_EVENT;
+      return 1;
+    case SDL_KEYDOWN:
+      scancode = sdl_event.key.keysym.scancode;
+      if ((inx = scancode_to_hex_keyboard_index(scancode)) != -1) {
+
+        event->event_type = KEY_PRESSED_EVENT;
+        event->key_index.index = inx;
+        return 1;
+      }
+      break;
+    case SDL_KEYUP:
+      scancode = sdl_event.key.keysym.scancode;
+      if ((inx = scancode_to_hex_keyboard_index(scancode)) != -1) {
+
+        event->event_type = KEY_RELEASED_EVENT;
+        event->key_index.index = inx;
+        return 1;
+      }
+      break;
+    }
+  }
+
+  return 0;
+}
 
 void platform_destroy(Platform *platform) {
   if (!platform)
