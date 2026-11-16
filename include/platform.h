@@ -4,9 +4,24 @@
 /* Abstract Data Type definition */
 typedef struct Platform Platform;
 
+/* Data Type definitions */
+typedef enum PlatformEventType {
+  EMULATOR_QUIT_EVENT,
+  KEY_PRESSED_EVENT,
+  KEY_RELEASED_EVENT,
+} PlatformEventType;
+
+typedef struct PlatfromEvent {
+  PlatformEventType event_type;
+  union KeyIndex {
+    uint8_t index;
+  } key_index;
+} PlatformEvent;
+
 /* Platform API */
-/* Function for creeating the platform responsible for working with variety of
+/* Function for creating the platform responsible for working with variety of
  * different drivers of subsystems e.g. graphics, audio, timers, keyboard, etc.
+ *
  * Params: window title for video subsystem, base width and height of screen to
  * be emulated and scaling point for output screen.
  *
@@ -35,4 +50,6 @@ extern uint64_t platform_get_ticks(void);
 extern uint64_t platform_get_clock_frequency(Platform *platform);
 
 extern void platform_sleep_ms(uint32_t ms);
+
+extern int platform_poll_event(PlatformEvent *event);
 #endif // !PLATFORM_H
