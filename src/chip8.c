@@ -1,4 +1,6 @@
 #include "../include/chip8.h"
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,7 +8,7 @@
 void *init_chip8(Chip8 *chip8, const Chip8Config *chip8_config) {
   chip8->config = *chip8_config;
 
-  /* set array explicitly */
+  /* set arrays explicitly */
   memset(&chip8->memory, 0,
          chip8_config->ram_size); /* set just the valid fields */
   memset(&chip8->v, 0, chip8_config->gpr_count);
@@ -19,19 +21,19 @@ void *init_chip8(Chip8 *chip8, const Chip8Config *chip8_config) {
   chip8->dt = 0;
   chip8->st = 0;
 
+  chip8->draw_flag = 0;
+
   return chip8;
 }
 
 int chip8_cycle(Chip8 *chip8) {
-  uint16_t instruction;
-  uint8_t first_nibble;
-  uint8_t last_byte;
-  uint8_t last_nibble;
-
-  /* FIXME: return status of cycle... */
+  uint16_t instruction = 0;
+  uint8_t first_nibble = 0;
+  uint8_t last_byte = 0;
+  uint8_t last_nibble = 0;
 
   // fetch phase
-  if (chip8->pc >= CHIP8_RAM_SIZE - 1) {
+  if (chip8->pc >= CHIP8_RAM_SIZE - 1 || chip8->pc < (unsigned)0x200) {
     fprintf(stderr, "CPU Trap: Memory overflow. PC out of bounds: (0x%.4x)\n",
             chip8->pc);
     goto EXIT_ROUTINE;
@@ -41,13 +43,16 @@ int chip8_cycle(Chip8 *chip8) {
   chip8->pc += 2;
   first_nibble = (0xf000 & instruction) >> 12;
 
-  printf("%.1x\n", first_nibble);
+  // printf("%.2x\n", first_nibble);
 
   // decode phase
   switch (first_nibble) {
   case 0:
-    if (instruction == 0x00e0) {
-      (void)printf("CLEAR SCREEN\n");
+    if (instruction == 0x00e0) /* CLEAR SCREEN */
+    {
+      memset((void *)&chip8->screen, 0,
+             (chip8->config.screen_height * chip8->config.screen_width));
+      chip8->draw_flag = 1;
     } else if (instruction == 0x00ee) {
       (void)puts("RETURN (from subroutine)");
 
@@ -63,9 +68,7 @@ int chip8_cycle(Chip8 *chip8) {
       goto EXIT_ROUTINE;
     }
     break;
-  case 1:
-    printf("JUMP: %.3x", instruction & 0x0fff);
-
+  case 1: /* JUMP */
     chip8->pc = instruction & 0x0fff;
     break;
   case 2:
@@ -91,11 +94,15 @@ int chip8_cycle(Chip8 *chip8) {
   case 5:
     puts("SKIP CONDITIONALlY IF Vx EQUAL TO Vy");
     break;
-  case 6:
-    puts("SET Vx TO CONST");
+  case 6: /* SET REG Vx TO const */
+    chip8->v[((unsigned)instruction & 0x0f00) >> 8] =
+        (uint8_t)(instruction & 0x00ff);
     break;
-  case 7:
-    puts("ADD CONST TO Vx (not overflow)");
+  case 7: /* ADD const TO Vx (NO OVERFLOW)*/
+    chip8->v[((unsigned)instruction & 0x0f00) >> 8] =
+        ((unsigned)chip8->v[((unsigned)instruction & 0x0f00) >> 8] +
+         ((unsigned)instruction & 0x00ff)) &
+        255;
     break;
   case 8:
     last_nibble = instruction & 0x000f;
@@ -136,8 +143,8 @@ int chip8_cycle(Chip8 *chip8) {
   case 9:
     puts("SKIP CONDITIONALlY IF Vx NOT EQUAL TO Vy");
     break;
-  case 0xa:
-    puts("SET Immediate REG");
+  case 0xa: /* SET I */
+    chip8->i = instruction & 0x0fff;
     break;
   case 0xb:
     puts("JUMP WITH OFFSET (!!!ambiguous instruction!!!)");
@@ -145,9 +152,62 @@ int chip8_cycle(Chip8 *chip8) {
   case 0xc:
     puts("RANDOM");
     break;
-  case 0xd:
-    puts("DISPLAY");
+  case 0xd: /* DRAW SCREEN */
+  {
+    uint8_t mask = 0x80;
+
+    uint8_t sprite_byte = chip8->memory[chip8->i];
+
+    uint8_t x_coordinate =
+        chip8->v[((instruction & 0x0f00)) >> 8] &
+        (chip8->config.screen_width - 1); /* X; wrap starting point only */
+    uint8_t y_coordinate =
+        chip8->v[((instruction & 0x00f0)) >> 4] &
+        (chip8->config.screen_height - 1); /* Y; wrap starting point only */
+
+    uint8_t sprite_rows = instruction & 0x000f; /* N */
+    uint16_t screen_row_starting_index =
+        (y_coordinate * chip8->config.screen_width) + x_coordinate;
+
+    chip8->v[0xf] = 0; /* unset explicitly */
+
+    /* Clip overflowing pixels */
+    uint8_t bottom_margin = sprite_rows;
+    if (y_coordinate + sprite_rows > chip8->config.screen_height) {
+      bottom_margin = chip8->config.screen_height - y_coordinate;
+    }
+
+    uint8_t right_margin = 8;
+    if (chip8->config.screen_width - x_coordinate < 8) {
+      right_margin = chip8->config.screen_width - x_coordinate;
+    }
+
+    /* Draw screen loop */
+    for (uint8_t r = 0; r < bottom_margin; r++) {
+      screen_row_starting_index =
+          ((y_coordinate + r) * chip8->config.screen_width) + x_coordinate;
+
+      mask = 0x80;
+      sprite_byte = chip8->memory[(chip8->i + r) & 0x0fff];
+
+      for (uint8_t col = 0; col < right_margin; col++) {
+        bool was_set = chip8->screen[screen_row_starting_index + col];
+
+        chip8->screen[screen_row_starting_index + col] ^=
+            ((sprite_byte & mask) >> (7 - col));
+
+        if (!chip8->v[0xf] && was_set &&
+            !chip8->screen[screen_row_starting_index + col]) {
+          // Collision detection
+          chip8->v[0xf] = 1;
+        }
+        mask = mask >> 1;
+      }
+    }
+
+    chip8->draw_flag = 1;
     break;
+  }
   case 0xe:
     last_byte = (uint8_t)instruction;
     if (last_byte == 0x9e) {
@@ -192,7 +252,7 @@ int chip8_cycle(Chip8 *chip8) {
     goto EXIT_ROUTINE;
   }
 
-EXIT_ROUTINE:;
-
   return EXIT_SUCCESS;
+EXIT_ROUTINE:
+  return EXIT_FAILURE;
 }
