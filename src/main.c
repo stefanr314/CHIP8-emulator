@@ -62,7 +62,6 @@ int main(int argc, char *argv[]) {
   uint64_t clock_frequency = platform_get_clock_frequency(platform);
 
   bool quit = false;
-  bool draw_flag = 1; /* NOTE: dummy flag until instruction implemented*/
 
   PlatformEvent event = {.event_type = 0,
                          .key_index.index = 0}; /* make memory checkers happy */
@@ -96,7 +95,11 @@ int main(int argc, char *argv[]) {
 
     // update physical simulation logic
     while (accu_cpu >= dt_cpu) {
-      chip8_cycle(&chip8);
+      int not_cycled = chip8_cycle(&chip8);
+      if (not_cycled) {
+        fprintf(stderr, "Emulated CPU suffered internal error.\n");
+        goto exit_routine;
+      }
       accu_cpu -= dt_cpu;
     }
 
@@ -106,8 +109,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* TODO: render only when draw flag raised*/
-    if (draw_flag) {
-
+    if (chip8.draw_flag) {
       int not_rendered = platform_render_frame(platform, chip8.screen,
                                                chip8_config.screen_width,
                                                chip8_config.screen_height);
@@ -115,7 +117,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Renderer suffered critical error terminating...");
         goto exit_routine;
       }
-      draw_flag = 0;
+      chip8.draw_flag = 0;
     }
 
     /* Sleep the rest of time frame. */
