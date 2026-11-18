@@ -18,7 +18,7 @@ SRCDIR := src
 
 TARGET := $(BINDIR)/chip8_emu
 
-override CFLAGS += -Wall -Wextra -std=c11 -pedantic
+override CFLAGS += -Wall -Wextra -std=c11 -pedantic -D_POSIX_C_SOURCE=200809L
 override CPPFLAGS += -MMD -MP
 SDL_CFLAGS := $(shell pkgconf --cflags sdl2)
 SDL_LIBS := $(shell pkgconf --libs sdl2)
