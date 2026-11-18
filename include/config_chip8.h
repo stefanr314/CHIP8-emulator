@@ -68,6 +68,9 @@
 #define MAX_DISPLAY_WIDTH SCHIP_MAX_DISPLAY_WIDTH
 #define MAX_DISPLAY_HEIGHT SCHIP_MAX_DISPLAY_HEIGHT
 
+/* Font start address. */
+#define FONT_START_ADDR 0x0050
+
 /* Types definitions. */
 typedef enum {
   ORIGINAL_CHIP8, /* COSMAC VIP original machine*/
@@ -82,6 +85,7 @@ typedef struct {
   /* Memory & registers */
   size_t ram_size;
   size_t entry_point_addr;
+  size_t font_start_addr;
   size_t max_rom_size;
   uint8_t stack_depth;
   uint8_t gpr_count;
@@ -107,6 +111,7 @@ static const Chip8Config CONFIG_PRESETS[] = {
     [ORIGINAL_CHIP8] = {.model = ORIGINAL_CHIP8,
                         .ram_size = CHIP8_RAM_SIZE,
                         .entry_point_addr = CHIP8_ENTRY_POINT_ADDRESS,
+                        .font_start_addr = FONT_START_ADDR,
                         .max_rom_size = CHIP8_MAX_ROM_SIZE,
                         .stack_depth = CHIP8_STACK_DEPTH,
                         .gpr_count = CHIP8_GPR_COUNT,
@@ -122,6 +127,7 @@ static const Chip8Config CONFIG_PRESETS[] = {
     [SCHIP] = {.model = SCHIP,
                .ram_size = SCHIP_RAM_SIZE,
                .entry_point_addr = SCHIP_ENTRY_POINT_ADDRESS,
+               .font_start_addr = FONT_START_ADDR,
                .max_rom_size = SCHIP_MAX_ROM_SIZE,
                .stack_depth = SCHIP_STACK_DEPTH,
                .gpr_count = SCHIP_GPR_COUNT,
@@ -137,6 +143,7 @@ static const Chip8Config CONFIG_PRESETS[] = {
     [ETI660] = {.model = ETI660,
                 .ram_size = ETI660_RAM_SIZE,
                 .entry_point_addr = ETI660_ENTRY_POINT_ADDRESS,
+                .font_start_addr = FONT_START_ADDR,
                 .max_rom_size = ETI660_MAX_ROM_SIZE,
                 .stack_depth = CHIP8_STACK_DEPTH,
                 .gpr_count = CHIP8_GPR_COUNT,
@@ -149,5 +156,25 @@ static const Chip8Config CONFIG_PRESETS[] = {
                 .load_store_quirk = 0,
                 .jump_quirk = 0,
                 .wrap_sprites_quirk = 0},
+};
+
+/* Define font sprite representations constants in bytes */
+static const uint8_t FONT_SPRITES[] = {
+    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+    0x20, 0x60, 0x20, 0x20, 0x70, // 1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+    0xF0, 0x80, 0xF0, 0x80, 0x80  // F
 };
 #endif

@@ -23,6 +23,7 @@ typedef struct {
   uint8_t st;  /* sound timer register */
 
   uint8_t screen[MAX_DISPLAY_WIDTH * MAX_DISPLAY_HEIGHT];
+  uint8_t keyboard[16];
   int draw_flag; /* set to 1 when drawing to screen; 0 otherwise and to reset */
 } Chip8;
 

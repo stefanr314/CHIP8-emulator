@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
 
   Chip8 chip8;
   // load the config for chip8
-  Chip8Config chip8_config = CONFIG_PRESETS[0]; /* hardcode it for now */
+  Chip8Config chip8_config = CONFIG_PRESETS[0]; /* NOTE: hardcode it for now */
 
   // init the chip8 to proper configuration
   (void)init_chip8(&chip8, &chip8_config);
@@ -73,12 +73,9 @@ int main(int argc, char *argv[]) {
       if (event.event_type == EMULATOR_QUIT_EVENT) {
         quit = true;
       } else if (event.event_type == KEY_PRESSED_EVENT) {
-        switch (event.key_index.index) {
-
-        case 0x0a:
-          printf("U have pressed a key A.\n");
-          break;
-        }
+        chip8.keyboard[event.key_index.index] = 1;
+      } else if (event.event_type == KEY_RELEASED_EVENT) {
+        chip8.keyboard[event.key_index.index] = 0;
       }
     }
 
@@ -104,11 +101,18 @@ int main(int argc, char *argv[]) {
     }
 
     while (accu_timer >= dt_timer) {
-      /* TODO: decrement dt i st timers */
+      // NOTE: since dt and st are unsigned this is false only when both are
+      // unset
+
+      if (chip8.dt > 0) {
+        chip8.dt--;
+      }
+      if (chip8.st > 0) {
+        chip8.st--;
+      }
       accu_timer -= dt_timer;
     }
 
-    /* TODO: render only when draw flag raised*/
     if (chip8.draw_flag) {
       int not_rendered = platform_render_frame(platform, chip8.screen,
                                                chip8_config.screen_width,
@@ -125,8 +129,7 @@ int main(int argc, char *argv[]) {
     double elapsed_sec = (double)elapsed_ticks / clock_frequency;
     if (elapsed_sec < MIN_FRAME_TIME) {
       double gap_ms = (MIN_FRAME_TIME - elapsed_sec) * 1000.0;
-      platform_sleep_ms(
-          (uint32_t)gap_ms); /* gap drift measured by accumulators*/
+      platform_sleep_ms((uint32_t)gap_ms); /* gap drift caught by accumulators*/
     }
   }
 
