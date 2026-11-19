@@ -104,6 +104,7 @@ typedef struct {
   bool load_store_quirk;
   bool jump_quirk;
   bool wrap_sprites_quirk;
+  bool vf_reset_quirk;
 } Chip8Config;
 
 /* Define presets */
@@ -121,9 +122,11 @@ static const Chip8Config CONFIG_PRESETS[] = {
                         .timer_hz = CHIP8_TIMER_HZ,
                         .display_refresh_rate = CHIP8_DISPLAY_REFRESH_RATE,
                         .shift_quirk = 0,
-                        .load_store_quirk = 0,
+                        .load_store_quirk =
+                            0, /* NOTE: set only for test purposes.*/
                         .jump_quirk = 0,
-                        .wrap_sprites_quirk = 0},
+                        .wrap_sprites_quirk = 0,
+                        .vf_reset_quirk = 1},
     [SCHIP] = {.model = SCHIP,
                .ram_size = SCHIP_RAM_SIZE,
                .entry_point_addr = SCHIP_ENTRY_POINT_ADDRESS,
@@ -139,7 +142,8 @@ static const Chip8Config CONFIG_PRESETS[] = {
                .shift_quirk = 1,
                .load_store_quirk = 1,
                .jump_quirk = 1,
-               .wrap_sprites_quirk = 1},
+               .wrap_sprites_quirk = 1,
+               .vf_reset_quirk = 0},
     [ETI660] = {.model = ETI660,
                 .ram_size = ETI660_RAM_SIZE,
                 .entry_point_addr = ETI660_ENTRY_POINT_ADDRESS,
@@ -155,7 +159,8 @@ static const Chip8Config CONFIG_PRESETS[] = {
                 .shift_quirk = 0,
                 .load_store_quirk = 0,
                 .jump_quirk = 0,
-                .wrap_sprites_quirk = 0},
+                .wrap_sprites_quirk = 0,
+                .vf_reset_quirk = 1},
 };
 
 /* Define font sprite representations constants in bytes */
