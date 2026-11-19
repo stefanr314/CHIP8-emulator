@@ -21,9 +21,9 @@ static inline int chip8_file_validation(off_t fileSize, int max_rom_size) {
     return FILE_TOO_SMALL;
   }
 
-  if (fileSize % 2 != 0) {
-    return FILE_CORRUPTED;
-  }
+  // if (fileSize % 2 != 0) {
+  //   return FILE_CORRUPTED;
+  // }
 
   return SUCCESS;
 }
