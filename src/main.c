@@ -135,4 +135,6 @@ int main(int argc, char *argv[]) {
 
 exit_routine:
   platform_destroy(platform);
+
+  return EXIT_SUCCESS;
 }
