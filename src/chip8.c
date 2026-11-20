@@ -6,6 +6,56 @@
 #include <string.h>
 #include <time.h>
 
+static inline void draw_screen(Chip8 *chip8, uint16_t instruction) {
+
+  uint8_t x_coordinate = chip8->v[((instruction & 0x0f00)) >> 8] &
+                         (chip8->config.screen_width -
+                          1); /* X; wrap starting point only (original CHIP8) */
+  uint8_t y_coordinate = chip8->v[((instruction & 0x00f0)) >> 4] &
+                         (chip8->config.screen_height -
+                          1); /* Y; wrap starting point only (original CHIP8) */
+
+  uint8_t sprite_rows = instruction & 0x000f; /* N */
+
+  chip8->v[0xf] = 0; /* unset explicitly */
+
+  /* Clip overflowing pixels (iff original CHIP8)*/
+  uint8_t bottom_margin = sprite_rows;
+  if (!chip8->config.wrap_sprites_quirk &&
+      y_coordinate + sprite_rows > chip8->config.screen_height) {
+    bottom_margin = (uint8_t)(chip8->config.screen_height - y_coordinate);
+  }
+
+  uint8_t right_margin = 8;
+  if (!chip8->config.wrap_sprites_quirk &&
+      chip8->config.screen_width - x_coordinate < 8) {
+    right_margin = (uint8_t)(chip8->config.screen_width - x_coordinate);
+  }
+
+  /* Draw screen loop - consider overflows on screen buffer, since SCHIP uses
+   * same loop */
+  for (uint8_t r = 0; r < bottom_margin; r++) {
+    uint8_t sprite_byte = chip8->memory[(chip8->i + r) & 0x0fff];
+
+    for (uint8_t col = 0; col < right_margin; col++) {
+      uint8_t py = (y_coordinate + r) & (chip8->config.screen_height - 1);
+      uint8_t px = (x_coordinate + col) & (chip8->config.screen_width - 1);
+      uint16_t screen_idx = (py * chip8->config.screen_width) + px;
+
+      bool was_set = chip8->screen[screen_idx];
+
+      chip8->screen[screen_idx] ^= ((sprite_byte >> (7 - col)) & 0x1);
+
+      if (!chip8->v[0xf] && was_set && !chip8->screen[screen_idx]) {
+        // Collision detection
+        chip8->v[0xf] = 1;
+      }
+    }
+  }
+
+  chip8->draw_flag = 1;
+}
+
 void *init_chip8(Chip8 *chip8, const Chip8Config *chip8_config) {
   chip8->config = *chip8_config;
 
@@ -20,7 +70,7 @@ void *init_chip8(Chip8 *chip8, const Chip8Config *chip8_config) {
   memcpy((chip8->memory + chip8_config->font_start_addr), FONT_SPRITES,
          sizeof(FONT_SPRITES));
 
-  chip8->pc = chip8_config->entry_point_addr;
+  chip8->pc = (uint16_t)chip8_config->entry_point_addr;
   chip8->sp = 0; /* Point to stack address of last entry */
   chip8->dt = 0;
   chip8->st = 0;
@@ -48,8 +98,8 @@ int chip8_cycle(Chip8 *chip8) {
             chip8->pc);
     goto exit_routine;
   }
-  instruction =
-      (chip8->memory[chip8->pc] << 8) | (chip8->memory[chip8->pc + 1]);
+  instruction = (uint16_t)(chip8->memory[chip8->pc] << 8) |
+                (chip8->memory[chip8->pc + 1]);
   chip8->pc += 2;
   first_nibble = (0xf000 & instruction) >> 12;
 
@@ -116,10 +166,8 @@ int chip8_cycle(Chip8 *chip8) {
     chip8->v[(instruction & 0x0f00) >> 8] = (uint8_t)(instruction & 0x00ff);
     break;
   case 7: /* ADD const TO Vx (NO OVERFLOW)*/
-    chip8->v[((unsigned)instruction & 0x0f00) >> 8] =
-        ((unsigned)chip8->v[((unsigned)instruction & 0x0f00) >> 8] +
-         ((unsigned)instruction & 0x00ff)) &
-        255;
+    chip8->v[(instruction & 0x0f00) >> 8] =
+        (chip8->v[(instruction & 0x0f00) >> 8] + (instruction & 0x00ff)) & 255;
     break;
   case 8:
     last_nibble = instruction & 0x000f;
@@ -248,60 +296,7 @@ int chip8_cycle(Chip8 *chip8) {
     break;
   case 0xd: /* DRAW SCREEN */
   {
-    uint8_t mask = 0x80;
-
-    uint8_t sprite_byte = chip8->memory[chip8->i];
-
-    uint8_t x_coordinate =
-        chip8->v[((instruction & 0x0f00)) >> 8] &
-        (chip8->config.screen_width - 1); /* X; wrap starting point only */
-    uint8_t y_coordinate =
-        chip8->v[((instruction & 0x00f0)) >> 4] &
-        (chip8->config.screen_height - 1); /* Y; wrap starting point only */
-
-    uint8_t sprite_rows = instruction & 0x000f; /* N */
-    uint16_t screen_row_starting_index =
-        (y_coordinate * chip8->config.screen_width) + x_coordinate;
-
-    chip8->v[0xf] = 0; /* unset explicitly */
-
-    /* Clip overflowing pixels */
-    uint8_t bottom_margin = sprite_rows;
-    if (!chip8->config.wrap_sprites_quirk &&
-        y_coordinate + sprite_rows > chip8->config.screen_height) {
-      bottom_margin = chip8->config.screen_height - y_coordinate;
-    }
-
-    uint8_t right_margin = 8;
-    if (!chip8->config.wrap_sprites_quirk &&
-        chip8->config.screen_width - x_coordinate < 8) {
-      right_margin = chip8->config.screen_width - x_coordinate;
-    }
-
-    /* Draw screen loop */
-    for (uint8_t r = 0; r < bottom_margin; r++) {
-      screen_row_starting_index =
-          ((y_coordinate + r) * chip8->config.screen_width) + x_coordinate;
-
-      mask = 0x80;
-      sprite_byte = chip8->memory[(chip8->i + r) & 0x0fff];
-
-      for (uint8_t col = 0; col < right_margin; col++) {
-        bool was_set = chip8->screen[screen_row_starting_index + col];
-
-        chip8->screen[screen_row_starting_index + col] ^=
-            ((sprite_byte & mask) >> (7 - col));
-
-        if (!chip8->v[0xf] && was_set &&
-            !chip8->screen[screen_row_starting_index + col]) {
-          // Collision detection
-          chip8->v[0xf] = 1;
-        }
-        mask = mask >> 1;
-      }
-    }
-
-    chip8->draw_flag = 1;
+    draw_screen(chip8, instruction);
     break;
   }
   case 0xe:
@@ -363,7 +358,7 @@ int chip8_cycle(Chip8 *chip8) {
         }
       } else {
         if (!chip8->keyboard[chip8->first_pressed_inx]) {
-          chip8->v[x] = chip8->first_pressed_inx;
+          chip8->v[x] = (uint8_t)chip8->first_pressed_inx;
           chip8->first_pressed_inx = -1;
           break; /* switch statement */
         }
@@ -373,7 +368,7 @@ int chip8_cycle(Chip8 *chip8) {
     } else if (last_byte == 0x29) /* I to FONT location */
     {
       uint8_t hex_char = chip8->v[x] & 0x0f;
-      chip8->i = chip8->config.font_start_addr +
+      chip8->i = (uint16_t)chip8->config.font_start_addr +
                  hex_char * 5; /* NOTE: 5 is hardcoded height of fonts in bytes.
                                   Only works for original chip8. */
 
