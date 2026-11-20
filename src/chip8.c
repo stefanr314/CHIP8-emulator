@@ -63,7 +63,9 @@ void *init_chip8(Chip8 *chip8, const Chip8Config *chip8_config) {
   memset(&chip8->memory, 0,
          chip8_config->ram_size); /* set just the valid fields */
   memset(&chip8->v, 0, chip8_config->gpr_count);
-  memset(&chip8->stack, 0, chip8_config->stack_depth);
+  memset(&chip8->stack, 0,
+         chip8_config->stack_depth *
+             sizeof(uint16_t)); /* init whole stack in B */
   memset(&chip8->screen, 0,
          (chip8_config->screen_height * chip8_config->screen_width));
   memset(&chip8->keyboard, 0, 16);
@@ -74,6 +76,7 @@ void *init_chip8(Chip8 *chip8, const Chip8Config *chip8_config) {
   chip8->sp = 0; /* Point to stack address of last entry */
   chip8->dt = 0;
   chip8->st = 0;
+  chip8->i = 0; /* set it explicitly */
 
   chip8->draw_flag = 0;
   chip8->first_pressed_inx = -1;
@@ -92,7 +95,7 @@ int chip8_cycle(Chip8 *chip8) {
   uint8_t vx = 0;
 
   // fetch phase
-  if (chip8->pc >= CHIP8_RAM_SIZE ||
+  if (chip8->pc > CHIP8_RAM_SIZE - 2 ||
       chip8->pc < chip8->config.entry_point_addr) {
     fprintf(stderr, "CPU Trap: Memory overflow. PC out of bounds: (0x%.4x)\n",
             chip8->pc);
@@ -304,19 +307,15 @@ int chip8_cycle(Chip8 *chip8) {
     x = (instruction & 0x0f00) >> 8;
     vx = chip8->v[x];
 
-    if (vx > 0xf) {
-      /* Invalid key press to be compared with */
-      break;
-    }
     if (last_byte == 0x9e) /* SKIP INST if key PRESSED*/
     {
-      if (chip8->keyboard[vx]) {
+      if (chip8->keyboard[vx & 0x0f]) {
         chip8->pc += 2;
       }
 
     } else if (last_byte == 0xa1) /* SKIP INST if key NOT PRESSED */
     {
-      if (!chip8->keyboard[vx]) {
+      if (!chip8->keyboard[vx & 0x0f]) {
         chip8->pc += 2;
       }
     } else {
@@ -376,8 +375,8 @@ int chip8_cycle(Chip8 *chip8) {
     {
       uint8_t value = chip8->v[x];
       chip8->memory[chip8->i] = value / 100;
-      chip8->memory[chip8->i + 1] = (value / 10) % 10;
-      chip8->memory[chip8->i + 2] = value % 10;
+      chip8->memory[(chip8->i + 1) & 0x0fff] = (value / 10) % 10;
+      chip8->memory[(chip8->i + 2) & 0x0fff] = value % 10;
     } else if (last_byte == 0x55) /* STORE (ambiguous instruction)*/
     {
       /* NOTE: insturction is ambiguous in terms of absolute or relative
@@ -387,7 +386,7 @@ int chip8_cycle(Chip8 *chip8) {
       uint16_t inx = chip8->i;
       for (uint8_t offset = 0; offset <= x; offset++) {
         inx = chip8->config.load_store_quirk ? chip8->i + offset : chip8->i++;
-        chip8->memory[inx] = chip8->v[offset];
+        chip8->memory[inx & 0x0fff] = chip8->v[offset];
       }
     } else if (last_byte == 0x65) /* LOAD */
     {
