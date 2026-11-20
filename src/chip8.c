@@ -56,6 +56,27 @@ static inline void draw_screen(Chip8 *chip8, uint16_t instruction) {
   chip8->draw_flag = 1;
 }
 
+static inline int get_key(Chip8 *chip8, uint8_t x) {
+  // NOTE: trigger is KEYDOWN not KEYUP
+
+  if (chip8->first_pressed_inx == -1) {
+    for (uint8_t i = 0; i < 16; i++) {
+      if (chip8->keyboard[i]) {
+        chip8->first_pressed_inx = i;
+        return 1;
+      }
+    }
+  } else {
+    if (!chip8->keyboard[chip8->first_pressed_inx]) {
+      chip8->v[x] = (uint8_t)chip8->first_pressed_inx;
+      chip8->first_pressed_inx = -1;
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
 void *init_chip8(Chip8 *chip8, const Chip8Config *chip8_config) {
   chip8->config = *chip8_config;
 
@@ -87,13 +108,6 @@ void *init_chip8(Chip8 *chip8, const Chip8Config *chip8_config) {
 }
 
 int chip8_cycle(Chip8 *chip8) {
-  uint16_t instruction = 0;
-  uint8_t first_nibble = 0;
-  uint8_t last_byte = 0;
-  uint8_t last_nibble = 0;
-  uint8_t x = 0;
-  uint8_t vx = 0;
-
   // fetch phase
   if (chip8->pc > CHIP8_RAM_SIZE - 2 ||
       chip8->pc < chip8->config.entry_point_addr) {
@@ -101,17 +115,23 @@ int chip8_cycle(Chip8 *chip8) {
             chip8->pc);
     goto exit_routine;
   }
-  instruction = (uint16_t)(chip8->memory[chip8->pc] << 8) |
-                (chip8->memory[chip8->pc + 1]);
+  uint16_t instruction = (uint16_t)(chip8->memory[chip8->pc] << 8) |
+                         (chip8->memory[chip8->pc + 1]);
   chip8->pc += 2;
-  first_nibble = (0xf000 & instruction) >> 12;
+
+  uint8_t op = (0xf000 & instruction) >> 12;
+  uint8_t n = instruction & 0x000f;
+  uint8_t nn = instruction & 0x00ff;
+  uint16_t nnn = instruction & 0x0fff;
+  uint8_t x = (0x0f00 & instruction) >> 8;
+  uint8_t y = (0x00f0 & instruction) >> 4;
 
 #ifdef DEBUG
-  printf("%.2x\n", first_nibble);
+  printf("OPCODE: %#.2x\n", op);
 #endif
 
   // decode phase
-  switch (first_nibble) {
+  switch (op) {
   case 0:
     if (instruction == 0x00e0) /* CLEAR SCREEN */
     {
@@ -121,67 +141,62 @@ int chip8_cycle(Chip8 *chip8) {
     } else if (instruction == 0x00ee) /* RET */
     {
       if (chip8->sp <= 0) {
-        (void)fprintf(stderr, "Stack Underflow occured.");
+        fprintf(stderr, "Stack Underflow occured.");
         goto exit_routine;
       }
 
       chip8->pc = chip8->stack[chip8->sp - 1];
       chip8->sp--;
     } else {
-      (void)fprintf(
-          stderr, "CPU Error: Insturction for writing direct machine code not "
-                  "allowed.");
+      fprintf(stderr,
+              "CPU Error: Insturction for writing direct machine code not "
+              "allowed.");
       // exit the loop
       goto exit_routine;
     }
     break;
   case 1: /* JUMP */
-    chip8->pc = instruction & 0x0fff;
+    chip8->pc = nnn;
     break;
   case 2: /* CALL */
     if (chip8->sp >= chip8->config.stack_depth) {
-      (void)fprintf(stderr, "Stack Overflow occured.");
+      fprintf(stderr, "Stack Overflow occured.");
       goto exit_routine;
     }
 
     chip8->sp++;
     chip8->stack[chip8->sp - 1] = chip8->pc;
 
-    chip8->pc = instruction & 0x0fff;
+    chip8->pc = nnn;
     break;
   case 3: /* SKIP CONDITIONALlY if Vx equals NN*/
-    if (chip8->v[(0x0f00 & instruction) >> 8] == (instruction & 0x00ff)) {
+    if (chip8->v[x] == nn) {
       chip8->pc += 2;
     }
     break;
   case 4: /* SKIP CONDITIONALlY if Vx not equal to NN*/
-    if (chip8->v[(0x0f00 & instruction) >> 8] != (instruction & 0x00ff)) {
+    if (chip8->v[x] != nn) {
       chip8->pc += 2;
     }
     break;
   case 5: /* SKIP CONDITIONALlY if Vx equal to Vy */
-    if (chip8->v[(0x0f00 & instruction) >> 8] ==
-        chip8->v[(0x00f0 & instruction) >> 4]) {
+    if (chip8->v[x] == chip8->v[y]) {
       chip8->pc += 2;
     }
     break;
   case 6: /* SET REG Vx TO const */
-    chip8->v[(instruction & 0x0f00) >> 8] = (uint8_t)(instruction & 0x00ff);
+    chip8->v[x] = (uint8_t)(nn);
     break;
   case 7: /* ADD const TO Vx (NO OVERFLOW)*/
-    chip8->v[(instruction & 0x0f00) >> 8] =
-        (chip8->v[(instruction & 0x0f00) >> 8] + (instruction & 0x00ff)) & 255;
+    chip8->v[x] = (chip8->v[x] + nn) & 255;
     break;
   case 8:
-    last_nibble = instruction & 0x000f;
-    switch (last_nibble) {
+    switch (n) {
     case 0: /* Set Vx to Vy */
-      chip8->v[(instruction & 0x0f00) >> 8] =
-          chip8->v[(instruction & 0x00f0) >> 4];
+      chip8->v[x] = chip8->v[y];
       break;
     case 1: /* BINARY OR */
-      chip8->v[(instruction & 0x0f00) >> 8] |=
-          chip8->v[(instruction & 0x00f0) >> 4];
+      chip8->v[x] |= chip8->v[y];
 
       /* NOTE: Original COSMAC VIP would reset vf flag due to CPU's ALU way of
        * operating */
@@ -190,8 +205,7 @@ int chip8_cycle(Chip8 *chip8) {
       }
       break;
     case 2: /* BINARY AND */
-      chip8->v[(instruction & 0x0f00) >> 8] &=
-          chip8->v[(instruction & 0x00f0) >> 4];
+      chip8->v[x] &= chip8->v[y];
 
       /* NOTE: Original COSMAC VIP would reset vf flag due to CPU's ALU way of
        * operating */
@@ -200,8 +214,7 @@ int chip8_cycle(Chip8 *chip8) {
       }
       break;
     case 3: /* LOGICAL XOR */
-      chip8->v[(instruction & 0x0f00) >> 8] ^=
-          chip8->v[(instruction & 0x00f0) >> 4];
+      chip8->v[x] ^= chip8->v[y];
 
       /* NOTE: Original COSMAC VIP would reset vf flag due to CPU's ALU way of
        * operating */
@@ -211,9 +224,8 @@ int chip8_cycle(Chip8 *chip8) {
       break;
     case 4: /* ADD Vy to Vx (with overflow) */
     {
-      int summ = chip8->v[(instruction & 0x0f00) >> 8] +
-                 chip8->v[(instruction & 0x00f0) >> 4];
-      chip8->v[(instruction & 0x0f00) >> 8] = summ & 0xff;
+      int summ = chip8->v[x] + chip8->v[y];
+      chip8->v[x] = summ & 0xff;
 
       chip8->v[0xf] = 0; /* set explicitly */
 
@@ -223,21 +235,20 @@ int chip8_cycle(Chip8 *chip8) {
     } break;
     case 5: /* SUBTRACT (Vx - Vy)*/
     {
-      uint8_t vx = chip8->v[(instruction & 0x0f00) >> 8];
-      uint8_t vy = chip8->v[(instruction & 0x00f0) >> 4];
-      chip8->v[(instruction & 0x0f00) >> 8] = (uint8_t)(vx - vy);
+      uint8_t vx = chip8->v[x];
+      uint8_t vy = chip8->v[y];
+      chip8->v[x] = (uint8_t)(vx - vy);
 
       chip8->v[0xf] = (vx >= vy) ? 1 : 0;
       break;
     }
-    case 6: /* SHIFT RIGHT 1b */
+    case 6: /* SHIFT RIGHT 1b (ambiguous instruction) */
     {
-      uint8_t x = (instruction & 0x0f00) >> 8;
       if (!chip8->config.shift_quirk) {
-        /* NOTE: Regular behaviour of instruction on original CHIP8 (ambiguous
-         * instruction) */
-        chip8->v[x] = chip8->v[(instruction & 0x00f0) >> 4];
+        /* NOTE: Regular behaviour of instruction on original CHIP8 */
+        chip8->v[x] = chip8->v[y];
       }
+
       uint8_t shifted_bit = chip8->v[x] & 1;
       chip8->v[x] >>= 1;
       chip8->v[0xf] = shifted_bit ? 1 : 0;
@@ -245,20 +256,18 @@ int chip8_cycle(Chip8 *chip8) {
     }
     case 7: /* SUBTRACT (Vy - Vx) */
     {
-      uint8_t vx = chip8->v[(instruction & 0x0f00) >> 8];
-      uint8_t vy = chip8->v[(instruction & 0x00f0) >> 4];
-      chip8->v[(instruction & 0x0f00) >> 8] = (uint8_t)(vy - vx);
+      uint8_t vx = chip8->v[x];
+      uint8_t vy = chip8->v[y];
+      chip8->v[x] = (uint8_t)(vy - vx);
 
       chip8->v[0xf] = (vy >= vx) ? 1 : 0;
       break;
     }
-    case 0xe: /* SHIFT LEFT 1b*/
+    case 0xe: /* SHIFT LEFT 1b (ambiguous instruction) */
     {
-      uint8_t x = (instruction & 0x0f00) >> 8;
       if (!chip8->config.shift_quirk) {
-        /* NOTE: Regular behaviour of instruction on original CHIP8 (ambiguous
-         * instruction) */
-        chip8->v[x] = chip8->v[(instruction & 0x00f0) >> 4];
+        /* NOTE: Regular behaviour of instruction on original CHIP8 */
+        chip8->v[x] = chip8->v[y];
       }
       uint8_t shifted_bit = chip8->v[x] & 0x80;
       chip8->v[x] <<= 1;
@@ -272,20 +281,17 @@ int chip8_cycle(Chip8 *chip8) {
     }
     break;
   case 9: /* SKIP CONDITIONALlY if Vx not equal to Vy */
-    if (chip8->v[(0x0f00 & instruction) >> 8] !=
-        chip8->v[(0x00f0 & instruction) >> 4]) {
+    if (chip8->v[x] != chip8->v[y]) {
       chip8->pc += 2;
     }
     break;
   case 0xa: /* SET I */
-    chip8->i = instruction & 0x0fff;
+    chip8->i = nnn;
     break;
   case 0xb: /* JUMP WITH OFFSET */
   {
-    uint16_t jump_at = instruction & 0x0fff;
-    chip8->pc = chip8->config.jump_quirk
-                    ? jump_at + chip8->v[(instruction & 0x0f00) >> 8]
-                    : jump_at + chip8->v[0];
+    chip8->pc =
+        chip8->config.jump_quirk ? nnn + chip8->v[x] : nnn + chip8->v[0];
     if (chip8->pc >= CHIP8_RAM_SIZE) {
       fprintf(stderr, "Out of memory error.");
       goto exit_routine;
@@ -293,9 +299,8 @@ int chip8_cycle(Chip8 *chip8) {
     break;
   }
   case 0xc: /* RANDOM */
-    // FIXME: implement emulator PRNG
-    chip8->v[(instruction & 0x0f00) >> 8] =
-        (uint8_t)(rand() & (instruction & 0x00ff));
+    // TODO: implement emulator PRNG
+    chip8->v[x] = (uint8_t)(rand() & nn);
     break;
   case 0xd: /* DRAW SCREEN */
   {
@@ -303,41 +308,36 @@ int chip8_cycle(Chip8 *chip8) {
     break;
   }
   case 0xe:
-    last_byte = (uint8_t)instruction;
-    x = (instruction & 0x0f00) >> 8;
-    vx = chip8->v[x];
-
-    if (last_byte == 0x9e) /* SKIP INST if key PRESSED*/
-    {
-      if (chip8->keyboard[vx & 0x0f]) {
+    switch (nn) {
+    case 0x9e: /* SKIP if PRESSED */
+      if (chip8->keyboard[chip8->v[x] & 0x0f]) {
         chip8->pc += 2;
       }
-
-    } else if (last_byte == 0xa1) /* SKIP INST if key NOT PRESSED */
-    {
-      if (!chip8->keyboard[vx & 0x0f]) {
+      break;
+    case 0xa1: /* SKIP if NOT PRESSED */
+      if (!chip8->keyboard[chip8->v[x] & 0x0f]) {
         chip8->pc += 2;
       }
-    } else {
+      break;
+    default:
       fprintf(stderr, "CPU Error: Unknown instruction (instruction starting "
                       "with nibble 0xe).\n");
       goto exit_routine;
     }
     break;
   case 0xf:
-    last_byte = (uint8_t)instruction;
-    x = (instruction & 0x0f00) >> 8;
-    if (last_byte == 0x07) /* SET Vx to TIMER reg*/ {
+    switch (nn) {
 
+    case 0x07: /* SET Vx to TIMER */
       chip8->v[x] = chip8->dt;
-    } else if (last_byte == 0x15) /* SET TIMER reg to Vx */
-    {
+      break;
+    case 0x15: /* SET TIMER to Vx */
       chip8->dt = chip8->v[x];
-    } else if (last_byte == 0x18) /* SET SOUND reg to Vx */
-    {
+      break;
+    case 0x18: /* SET SOUND to Vx */
       chip8->st = chip8->v[x];
-    } else if (last_byte == 0x1e) /* ADD to I */
-    {
+      break;
+    case 0x1e: /* ADD to I */
       chip8->i += chip8->v[x];
       if (chip8->i >= 0x1000) {
         // NOTE: not truly COSMAC VIP property, but some machines rely on Vf to
@@ -346,38 +346,27 @@ int chip8_cycle(Chip8 *chip8) {
 
         chip8->v[0xf] = 1;
       }
-    } else if (last_byte == 0x0a) /* GET KEY (blocks) */
-    {
-      if (chip8->first_pressed_inx == -1) {
-        for (uint8_t i = 0; i < 16; i++) {
-          if (chip8->keyboard[i]) {
-            chip8->first_pressed_inx = i;
-            break; /* for loop */
-          }
-        }
-      } else {
-        if (!chip8->keyboard[chip8->first_pressed_inx]) {
-          chip8->v[x] = (uint8_t)chip8->first_pressed_inx;
-          chip8->first_pressed_inx = -1;
-          break; /* switch statement */
-        }
+      break;
+    case 0x0a: /* GET KEY */
+      if (get_key(chip8, x)) {
+        chip8->pc -= 2;
       }
-
-      chip8->pc -= 2;             /* trigger is KEYUP not KEYDOWN */
-    } else if (last_byte == 0x29) /* I to FONT location */
+      break;
+    case 0x29: /* FONT */
     {
       uint8_t hex_char = chip8->v[x] & 0x0f;
       chip8->i = (uint16_t)chip8->config.font_start_addr +
-                 hex_char * 5; /* NOTE: 5 is hardcoded height of fonts in bytes.
-                                  Only works for original chip8. */
-
-    } else if (last_byte == 0x33) /* BCD CONVERSION*/
+                 hex_char * 5; /* NOTE: 5 is hardcoded height of fonts in
+                                  bytes. Only works for original chip8. */
+    } break;
+    case 0x33: /* BCD */
     {
       uint8_t value = chip8->v[x];
       chip8->memory[chip8->i] = value / 100;
       chip8->memory[(chip8->i + 1) & 0x0fff] = (value / 10) % 10;
       chip8->memory[(chip8->i + 2) & 0x0fff] = value % 10;
-    } else if (last_byte == 0x55) /* STORE (ambiguous instruction)*/
+    } break;
+    case 0x55: /* STORE (ambiguous instruction) */
     {
       /* NOTE: insturction is ambiguous in terms of absolute or relative
        * positioning upon storing. For testing purposes only original COSMAC VIP
@@ -388,7 +377,8 @@ int chip8_cycle(Chip8 *chip8) {
         inx = chip8->config.load_store_quirk ? chip8->i + offset : chip8->i++;
         chip8->memory[inx & 0x0fff] = chip8->v[offset];
       }
-    } else if (last_byte == 0x65) /* LOAD */
+    } break;
+    case 0x65: /* LOAD (ambiguous instruction) */
     {
       /* NOTE: Same remarks as for STORE instruction. */
 
@@ -397,7 +387,8 @@ int chip8_cycle(Chip8 *chip8) {
         inx = chip8->config.load_store_quirk ? chip8->i + offset : chip8->i++;
         chip8->v[offset] = chip8->memory[inx & 0x0fff];
       }
-    } else {
+    } break;
+    default:
       fprintf(stderr, "CPU Error: Unknown instruction (instruction starting "
                       "with nibble 0xf).\n");
       goto exit_routine;
