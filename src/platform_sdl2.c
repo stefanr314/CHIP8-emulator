@@ -9,7 +9,7 @@
 #include <SDL_scancode.h>
 #include <SDL_timer.h>
 #include <SDL_video.h>
-#include <stdatomic.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -20,6 +20,9 @@
 
 #define SOUND_FREQ 440
 #define AMPL_S16 2800
+#define SILENCE_U8 128
+#define SILENCE_S16 0
+#define SILENCE_F32 0
 
 typedef void (*SoundGeneratorStrategy)(void *userdata, uint8_t *stream,
                                        int len);
@@ -159,23 +162,29 @@ Platform *platform_create(const char *window_title, uint32_t base_width,
                                       .size = (512 * 1 * 2),
                                       .callback = audio_dispatch_callback,
                                       .userdata = &platform->audio_data};
-  platform->audio_dev =
-      SDL_OpenAudioDevice(NULL, 0, &desired_spec, &platform->obtained, 0);
+  platform->audio_dev = SDL_OpenAudioDevice(
+      NULL, 0, &desired_spec, &platform->obtained,
+      SDL_AUDIO_ALLOW_FORMAT_CHANGE | SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
   if (!platform->audio_dev) {
     fprintf(stderr, "Error upon loading the audio subsystem. Error: %s\n",
             SDL_GetError());
     goto error_routine;
   }
 
+  generate_sound_freq(&platform->audio_data, SOUND_FREQ,
+                      (uint32_t)platform->obtained.freq, AMPL_S16);
+  platform->audio_data.beep_active = false;
+  platform->audio_data.sample_counter = 0;
+
   switch (platform->obtained.format) {
-
   case AUDIO_S16SYS:
-    generate_sound_freq(&platform->audio_data, SOUND_FREQ,
-                        (uint32_t)platform->obtained.freq, AMPL_S16);
-    platform->audio_data.beep_active = false;
     platform->audio_data.strategy = generate_s16;
-    platform->audio_data.sample_counter = 0;
-
+    break;
+  case AUDIO_F32SYS:
+    platform->audio_data.strategy = generate_f32;
+    break;
+  case AUDIO_U8:
+    platform->audio_data.strategy = generate_u8;
     break;
   default:
     fprintf(stderr, "Error upon loading the audio subsystem. Audio format not "
@@ -192,24 +201,90 @@ error_routine:
 
 /*
  * Wrapper function used for delegating to concrete implementation of strategy
+ * (Trampoline pattern).
  */
 static void audio_dispatch_callback(void *userdata, uint8_t *stream, int len) {
   ((AudioData *)userdata)->strategy(userdata, stream, len);
 }
 
 static void generate_s16(void *userdata, uint8_t *stream, int len) {
+  /* NOTE: Quantization range: [-SHRT_MAX, SHRT_MAX]. Silence at: 0. Amplitude
+   * is original. */
+
   AudioData *audio_data = (AudioData *)userdata;
   if (!audio_data->beep_active) {
     audio_data->sample_counter = 0;
-    // make silence - 0 is silence
-    memset((void *)stream, 0, (size_t)len);
+    memset((void *)stream, SILENCE_S16, (size_t)len);
     return;
   }
   uint32_t sample_counter = audio_data->sample_counter;
   int16_t *write_at = (int16_t *)stream;
   int16_t ampl_h = (int16_t)audio_data->ampl;
-  int16_t ampl_l = (int16_t)(-audio_data->ampl); // NOTE: check me...
+  int16_t ampl_l = (int16_t)(-audio_data->ampl);
   uint32_t buffer_samples = (uint32_t)((size_t)len / sizeof(int16_t));
+
+  for (uint32_t sample = 0; sample < buffer_samples; sample++) {
+    if (sample_counter < audio_data->half_period_samples) {
+      *write_at++ = ampl_h;
+    } else {
+      *write_at++ = ampl_l;
+    }
+
+    sample_counter = (sample_counter + 1) % audio_data->period_samples;
+  }
+
+  audio_data->sample_counter = sample_counter;
+}
+
+static void generate_u8(void *userdata, uint8_t *stream, int len) {
+  /* NOTE: Quantization range: [0, 255]. Silence at: 128. Amplituide scaled to
+   * S16 ampl. */
+
+  AudioData *audio_data = (AudioData *)userdata;
+  if (!audio_data->beep_active) {
+    audio_data->sample_counter = 0;
+    memset((void *)stream, SILENCE_U8, (size_t)len);
+    return;
+  }
+
+  uint32_t sample_counter = audio_data->sample_counter;
+  uint8_t *write_at = stream;
+
+  const uint8_t ampl_offset = (uint8_t)(((float)audio_data->ampl / SHRT_MAX) *
+                                            (UINT8_MAX - SILENCE_U8) +
+                                        0.5f);
+  const uint8_t ampl_h = (SILENCE_U8 + ampl_offset);
+  const uint8_t ampl_l = (SILENCE_U8 - ampl_offset);
+
+  for (uint32_t sample = 0; sample < (uint32_t)len; sample++) {
+    if (sample_counter < audio_data->half_period_samples) {
+      *write_at++ = ampl_h;
+    } else {
+      *write_at++ = ampl_l;
+    }
+
+    sample_counter = (sample_counter + 1) % audio_data->period_samples;
+  }
+
+  audio_data->sample_counter = sample_counter;
+}
+static void generate_f32(void *userdata, uint8_t *stream, int len) {
+  /* NOTE: Quantization in range [-1.0f, 1.0f]. Scale ampl to S16 ampl value.
+   * Silence is at 0. */
+
+  AudioData *audio_data = (AudioData *)userdata;
+  if (!audio_data->beep_active) {
+    audio_data->sample_counter = 0;
+    memset((void *)stream, SILENCE_F32, (size_t)len);
+    return;
+  }
+  uint32_t sample_counter = audio_data->sample_counter;
+  float *write_at = (float *)stream;
+
+  const float ampl_h = (float)audio_data->ampl /
+                       SHRT_MAX; /* At about 0.085f for short value 2800 */
+  const float ampl_l = -ampl_h;
+  const uint32_t buffer_samples = (uint32_t)((size_t)len / sizeof(float));
 
   for (uint32_t sample = 0; sample < buffer_samples; sample++) {
     if (sample_counter < audio_data->half_period_samples) {
