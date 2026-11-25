@@ -12,8 +12,9 @@ typedef enum {
 
 static inline int is_regular_file(mode_t mode) { return S_ISREG(mode); }
 
-static inline int chip8_file_validation(off_t fileSize, int max_rom_size) {
-  if (fileSize > max_rom_size) {
+static inline RomValidationStatus chip8_file_validation(off_t fileSize,
+                                                        size_t max_rom_size) {
+  if ((size_t)fileSize > max_rom_size) {
     return FILE_TOO_LARGE;
   }
 
@@ -31,7 +32,7 @@ static inline int chip8_file_validation(off_t fileSize, int max_rom_size) {
 static void print_hex_dump(void *memory, int bytes);
 
 int load_rom_file(const char *restrict path, uint8_t *restrict memory,
-                  size_t *restrict read_size, int max_rom_size) {
+                  size_t *restrict read_size, size_t max_rom_size) {
   int return_value = EXIT_SUCCESS;
   STAT_STRUCT stat;
   FILE *fp = fopen(path, "rb");

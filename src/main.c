@@ -113,6 +113,9 @@ int main(int argc, char *argv[]) {
       accu_timer -= dt_timer;
     }
 
+    // FIXME: is this the way...
+    platform_make_beep(platform, chip8.st > 0);
+
     if (chip8.draw_flag) {
       int not_rendered = platform_render_frame(platform, chip8.screen,
                                                chip8_config.screen_width,

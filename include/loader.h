@@ -37,6 +37,6 @@
  * */
 extern int load_rom_file(const char *__restrict path,
                          uint8_t *__restrict memory,
-                         size_t *__restrict read_size, int max_rom_size);
+                         size_t *__restrict read_size, size_t max_rom_size);
 
 #endif
